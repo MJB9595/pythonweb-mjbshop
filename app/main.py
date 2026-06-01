@@ -1,22 +1,26 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from pathlib import Path
+"""메인 FastAPI 앱 — 네이버 쇼핑 검색 (루트 제공)."""
 import re
 
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
+
 from app.models import mongodb
-from app.models.book import BookModel
-from app.book_scraper import NaverBookScraper
+from app.models.shopping import ShoppingModel
+from app.shopping_scraper import NaverShoppingScraper
 
 app = FastAPI()
-
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
+# ──────────────────────────────────────────────
+# 헬퍼
+# ──────────────────────────────────────────────
+
 def _to_int(value) -> int:
-    """네이버 응답의 가격 필드처럼 빈 문자열/None/숫자 문자열을 안전하게 int로."""
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -24,56 +28,99 @@ def _to_int(value) -> int:
 
 
 def _strip_tags(text: str) -> str:
-    """네이버 title 등에 섞여오는 <b> 같은 태그 제거."""
     if not text:
         return ""
     return re.sub(r"<[^>]+>", "", text)
 
+
+def _normalize_item(keyword: str, item: dict) -> dict:
+    return {
+        "keyword": keyword,
+        "title": _strip_tags(item.get("title", "")),
+        "link": item.get("link", ""),
+        "image": item.get("image", ""),
+        "lprice": _to_int(item.get("lprice", 0)),
+        "hprice": _to_int(item.get("hprice", 0)),
+        "mall_name": item.get("mallName", ""),
+        "product_id": str(item.get("productId", "")),
+        "brand": item.get("brand", ""),
+        "maker": item.get("maker", ""),
+        "category1": item.get("category1", ""),
+        "category2": item.get("category2", ""),
+        "category3": item.get("category3", ""),
+        "category4": item.get("category4", ""),
+    }
+
+
+# ──────────────────────────────────────────────
+# 페이지 라우터
+# ──────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"title": "북북"},
+        context={"title": "쇼핑 검색"},
     )
 
 
 @app.get("/search", response_class=HTMLResponse)
-async def read_item(request: Request, q: str = ""):
+async def search(request: Request, q: str = "", sort: str = "date"):
     keyword = q.strip()
 
     if not keyword:
         return templates.TemplateResponse(
             request=request,
             name="index.html",
-            context={"title": "북북", "message": "검색어를 입력해주세요"},
+            context={"title": "쇼핑 검색", "message": "검색어를 입력해주세요"},
         )
 
-    naver_book_scraper = NaverBookScraper()
-    books = await naver_book_scraper.search(keyword, 10)
+    if sort not in ("date", "asc", "dsc", "sim"):
+        sort = "date"
 
-    book_models = []
-    for book in books:
-        book_model = BookModel(
-            keyword=keyword,
-            title=_strip_tags(book.get("title", "")),
-            author=_strip_tags(book.get("author", "")).replace("^", ", "),
-            publisher=book.get("publisher", ""),
-            price=_to_int(book.get("discount")),
-            image=book.get("image", ""),
-        )
-        book_models.append(book_model)
+    scraper = NaverShoppingScraper()
+    items_raw = await scraper.search(keyword, sort=sort)
+    items = [_normalize_item(keyword, item) for item in items_raw]
 
-    if book_models:
-        await mongodb.engine.save_all(book_models)
+    shop_models = [ShoppingModel(**i) for i in items]
+    if shop_models:
+        await mongodb.engine.save_all(shop_models)
 
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"title": "북북", "keyword": keyword, "books": book_models},
+        context={
+            "title": f"{keyword} 검색결과",
+            "keyword": keyword,
+            "sort": sort,
+            "items": items,
+        },
     )
 
+
+# ──────────────────────────────────────────────
+# JSON API (AJAX 정렬용)
+# ──────────────────────────────────────────────
+
+@app.get("/api/shop")
+async def api_shop(q: str = "", sort: str = "date"):
+    keyword = q.strip()
+    if not keyword:
+        return JSONResponse({"items": []})
+
+    if sort not in ("date", "asc", "dsc", "sim"):
+        sort = "date"
+
+    scraper = NaverShoppingScraper()
+    items_raw = await scraper.search(keyword, sort=sort)
+    items = [_normalize_item(keyword, item) for item in items_raw]
+    return JSONResponse({"items": items})
+
+
+# ──────────────────────────────────────────────
+# 수명주기
+# ──────────────────────────────────────────────
 
 @app.on_event("startup")
 async def on_app_start():

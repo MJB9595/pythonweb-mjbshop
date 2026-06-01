@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <meta name="description" content="네이버 쇼핑 API 기반 상품 비교 검색기. 최신순·가격·별점 정렬 및 즐겨찾기 지원." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <style>
+      /* ─── RESET & ROOT ─────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg:        #0d0f14;
+        --surface:   #161b27;
+        --card:      #1e2536;
+        --card-hover:#252d42;
+        --border:    #2a3149;
+        --text:      #e4e8f5;
+        --muted:     #7b88aa;
+        --accent:    #4f8ef7;
+        --accent-h:  #6aa0ff;
+        --green:     #3ecf84;
+        --gold:      #f5a623;
+        --red:       #f56060;
+        --fav:       #ff4e6a;
+        --radius:    14px;
+        --shadow:    0 4px 24px rgba(0,0,0,.4);
+      }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+      }
+
+      a { color: inherit; text-decoration: none; }
+      img { display: block; }
+      button { cursor: pointer; font-family: inherit; }
+
+      /* ─── HERO ──────────────────────────────────── */
+      .hero {
+        background: linear-gradient(135deg, #0d1528 0%, #151f3a 50%, #1a1035 100%);
+        padding: 4rem 1.5rem 3rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .hero::before {
+        content: '';
+        position: absolute;
+        inset: -60px;
+        background: radial-gradient(ellipse at 30% 20%, rgba(79,142,247,.12) 0%, transparent 60%),
+                    radial-gradient(ellipse at 80% 80%, rgba(62,207,132,.08) 0%, transparent 60%);
+        pointer-events: none;
+      }
+
+      .hero-logo {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        font-size: 1.75rem;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: var(--text);
+        margin-bottom: 1rem;
+        position: relative;
+      }
+      .hero-logo span.dot { color: var(--accent); }
+
+      .hero-sub {
+        font-size: .95rem;
+        color: var(--muted);
+        margin-bottom: 2rem;
+        position: relative;
+      }
+
+      /* ─── SEARCH BAR ────────────────────────────── */
+      .search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+
+      #search-input {
+        width: 100%;
+        background: rgba(255,255,255,.07);
+        border: 1.5px solid var(--border);
+        border-radius: 50px;
+        padding: .85rem 7rem .85rem 1.5rem;
+        font-size: 1rem;
+        color: var(--text);
+        outline: none;
+        transition: border-color .2s, box-shadow .2s;
+        backdrop-filter: blur(8px);
+      }
+      #search-input::placeholder { color: var(--muted); }
+      #search-input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(79,142,247,.2);
+      }
+
+      #search-btn {
+        position: absolute;
+        right: .4rem;
+        background: linear-gradient(135deg, var(--accent), #7b5ef7);
+        color: #fff;
+        border: none;
+        border-radius: 50px;
+        padding: .6rem 1.4rem;
+        font-size: .9rem;
+        font-weight: 600;
+        transition: transform .15s, opacity .15s;
+      }
+      #search-btn:hover { opacity: .9; transform: scale(1.03); }
+      #search-btn:active { transform: scale(.97); }
+
+      /* ─── SORT TABS ─────────────────────────────── */
+      .sort-bar {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex-wrap: wrap;
+        padding: 1.25rem 1.5rem .75rem;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+
+      .sort-label {
+        font-size: .8rem;
+        color: var(--muted);
+        margin-right: .25rem;
+      }
+
+      .sort-btn {
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        border-radius: 50px;
+        padding: .4rem 1rem;
+        font-size: .85rem;
+        color: var(--muted);
+        font-weight: 500;
+        transition: all .15s;
+      }
+      .sort-btn:hover { border-color: var(--accent); color: var(--text); }
+      .sort-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .fav-toggle {
+        margin-left: auto;
+        background: transparent;
+        border: 1.5px solid var(--border);
+        border-radius: 50px;
+        padding: .4rem 1rem;
+        font-size: .85rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        transition: all .15s;
+      }
+      .fav-toggle:hover { border-color: var(--fav); color: var(--fav); }
+      .fav-toggle.active { border-color: var(--fav); color: var(--fav); background: rgba(255,78,106,.08); }
+
+      .result-count {
+        font-size: .82rem;
+        color: var(--muted);
+        padding: 0 1.5rem .75rem;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+      .result-count strong { color: var(--accent); }
+
+      /* ─── GRID ──────────────────────────────────── */
+      .shop-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1.1rem;
+        padding: 0 1.5rem 3rem;
+        max-width: 1500px;
+        margin: 0 auto;
+        list-style: none;
+      }
+
+      @media (max-width: 1300px) { .shop-grid { grid-template-columns: repeat(4, 1fr); } }
+      @media (max-width: 1000px) { .shop-grid { grid-template-columns: repeat(3, 1fr); } }
+      @media (max-width: 700px)  { .shop-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 420px)  { .shop-grid { grid-template-columns: 1fr; } }
+
+      /* ─── CARD ──────────────────────────────────── */
+      .shop-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: transform .18s, box-shadow .18s, border-color .18s;
+        position: relative;
+      }
+      .shop-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow);
+        border-color: rgba(79,142,247,.35);
+        background: var(--card-hover);
+      }
+
+      /* Clickable overlay — 카드 전체가 링크 */
+      .card-link {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+      }
+
+      /* 즐겨찾기 버튼 — link 위에 떠야 하므로 z-index 높게 */
+      .fav-btn {
+        position: absolute;
+        top: .6rem;
+        right: .6rem;
+        z-index: 2;
+        background: rgba(13,15,20,.7);
+        border: none;
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
+        backdrop-filter: blur(6px);
+        transition: background .15s, transform .15s;
+        line-height: 1;
+      }
+      .fav-btn:hover { background: rgba(255,78,106,.25); transform: scale(1.15); }
+      .fav-btn.faved { color: var(--fav); }
+      .fav-btn:not(.faved) { color: var(--muted); }
+
+      /* 이미지 영역 */
+      .card-thumb {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: #0e1320;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .card-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform .3s;
+      }
+      .shop-card:hover .card-thumb img { transform: scale(1.06); }
+
+      /* 텍스트 영역 */
+      .card-body {
+        padding: .85rem .9rem .9rem;
+        display: flex;
+        flex-direction: column;
+        gap: .4rem;
+        flex: 1;
+      }
+
+      .card-mall {
+        font-size: .72rem;
+        color: var(--muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+      }
+
+      .card-title {
+        font-size: .88rem;
+        font-weight: 600;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        color: var(--text);
+      }
+
+      .card-brand {
+        font-size: .78rem;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .card-cat {
+        font-size: .72rem;
+        color: var(--accent);
+        opacity: .8;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .card-price-wrap {
+        margin-top: auto;
+        padding-top: .6rem;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: .15rem;
+      }
+
+      .card-price-low {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--green);
+      }
+      .card-price-high {
+        font-size: .78rem;
+        color: var(--muted);
+      }
+
+      /* ─── SKELETON ──────────────────────────────── */
+      .skeleton {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        animation: shimmer 1.5s infinite;
+      }
+      .skel-img { width: 100%; aspect-ratio: 1; background: var(--surface); }
+      .skel-body { padding: .85rem; display: flex; flex-direction: column; gap: .5rem; }
+      .skel-line { height: .65rem; border-radius: 4px; background: var(--surface); }
+      .skel-line.w60 { width: 60%; }
+      .skel-line.w40 { width: 40%; }
+
+      @keyframes shimmer {
+        0%   { opacity: 1; }
+        50%  { opacity: .6; }
+        100% { opacity: 1; }
+      }
+
+      /* ─── EMPTY / INITIAL STATE ─────────────────── */
+      .state-box {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--muted);
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+      .state-box .emoji { font-size: 3rem; margin-bottom: 1rem; }
+      .state-box h2 { font-size: 1.25rem; color: var(--text); margin-bottom: .5rem; }
+
+      /* ─── TOAST ─────────────────────────────────── */
+      #toast {
+        position: fixed;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%) translateY(120%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 50px;
+        padding: .65rem 1.5rem;
+        font-size: .88rem;
+        color: var(--text);
+        box-shadow: var(--shadow);
+        transition: transform .3s;
+        z-index: 999;
+        white-space: nowrap;
+      }
+      #toast.show { transform: translateX(-50%) translateY(0); }
+
+      /* ─── FOOTER ────────────────────────────────── */
+      footer {
+        text-align: center;
+        padding: 1.5rem;
+        font-size: .78rem;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ─ HERO ─────────────────────────────────────── -->
+    <div class="hero">
+      <div class="hero-logo">🛒 Shop<span class="dot">.</span>Search</div>
+      <p class="hero-sub">네이버 쇼핑 API 기반 상품 비교 · 최신순/가격순 정렬 · 즐겨찾기</p>
+
+      <div class="search-wrap">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="상품명을 입력하세요 (예: MG 버카 제타, 돼지고기 뒷다리)"
+          autocomplete="off"
+          value="{{ keyword or '' }}"
+        />
+        <button id="search-btn" onclick="doSearch()">검색</button>
+      </div>
+    </div>
+
+    <!-- ─ SORT & CONTROLS ─────────────────────────── -->
+    <div class="sort-bar" id="sort-bar" style="display:none;">
+      <span class="sort-label">정렬:</span>
+      <button class="sort-btn active" id="btn-date"  onclick="setSort('date')">🕐 최신순</button>
+      <button class="sort-btn"        id="btn-asc"   onclick="setSort('asc')">💰 가격 낮은순</button>
+      <button class="sort-btn"        id="btn-dsc"   onclick="setSort('dsc')">💎 가격 높은순</button>
+      <button class="sort-btn"        id="btn-sim"   onclick="setSort('sim')">⭐ 정확도순</button>
+      <button class="fav-toggle" id="fav-toggle" onclick="toggleFavFilter()">♡ 즐겨찾기만 보기</button>
+    </div>
+
+    <div class="result-count" id="result-count" style="display:none;"></div>
+
+    <!-- ─ GRID ─────────────────────────────────────── -->
+    <ul class="shop-grid" id="shop-grid"></ul>
+
+    <!-- ─ INITIAL / EMPTY STATE ──────────────────── -->
+    <div class="state-box" id="state-box">
+      <div class="emoji">🔍</div>
+      <h2>원하는 상품을 검색해보세요</h2>
+      <p>같은 이름의 다양한 상품을 한눈에 비교할 수 있습니다.</p>
+    </div>
+
+    <!-- ─ TOAST ─────────────────────────────────────── -->
+    <div id="toast"></div>
+
+    <footer>powered by 네이버 Open API &nbsp;|&nbsp; mjbbooks</footer>
+
+    <script>
+      // ── 상태 ────────────────────────────────────────
+      let allItems   = [];  // 현재 검색 결과 전체
+      let currentSort = 'date';
+      let keyword     = '';
+      let favOnly     = false;
+      // favorites: Set of product_id (or title+lprice fallback)
+      let favorites   = new Set(JSON.parse(localStorage.getItem('shop_favs') || '[]'));
+
+      // ── 초기 로드 ──────────────────────────────────
+      window.addEventListener('DOMContentLoaded', () => {
+        const kw = "{{ keyword or '' }}";
+        const items = {{ items | tojson if items is defined else 'null' }};
+        if (kw && items) {
+          keyword = kw;
+          document.getElementById('search-input').value = kw;
+          allItems = items;
+          showControls();
+          render();
+        }
+      });
+
+      // ── 검색 ───────────────────────────────────────
+      function doSearch() {
+        const q = document.getElementById('search-input').value.trim();
+        if (!q) { showToast('검색어를 입력해주세요'); return; }
+
+        keyword = q;
+        currentSort = 'date';
+        favOnly = false;
+
+        // sort 버튼 초기화
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-date').classList.add('active');
+        document.getElementById('fav-toggle').classList.remove('active');
+
+        fetchItems();
+      }
+
+      document.getElementById('search-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSearch();
+      });
+
+      // ── API 호출 ────────────────────────────────────
+      async function fetchItems() {
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/shop?q=${encodeURIComponent(keyword)}&sort=${currentSort}`);
+          const data = await res.json();
+          allItems = data.items || [];
+          showControls();
+          render();
+        } catch (err) {
+          showToast('검색 중 오류가 발생했습니다.');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      // ── 정렬 ───────────────────────────────────────
+      function setSort(sort) {
+        if (sort === currentSort) return;
+        currentSort = sort;
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`btn-${sort}`).classList.add('active');
+
+        if (!keyword) return;
+        // 가격 낮은순/높은순은 클라이언트사이드 정렬로도 가능하나 API 정렬을 우선
+        fetchItems();
+      }
+
+      // ── 즐겨찾기 필터 ────────────────────────────────
+      function toggleFavFilter() {
+        favOnly = !favOnly;
+        const btn = document.getElementById('fav-toggle');
+        btn.classList.toggle('active', favOnly);
+        btn.textContent = favOnly ? '♥ 즐겨찾기만 보기' : '♡ 즐겨찾기만 보기';
+        render();
+      }
+
+      // ── 즐겨찾기 토글 (개별 카드) ─────────────────
+      function toggleFav(event, pid) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (favorites.has(pid)) {
+          favorites.delete(pid);
+          showToast('즐겨찾기에서 제거했습니다');
+        } else {
+          favorites.add(pid);
+          showToast('즐겨찾기에 추가했습니다 ♥');
+        }
+        localStorage.setItem('shop_favs', JSON.stringify([...favorites]));
+        // 해당 버튼만 업데이트
+        const btn = document.querySelector(`.fav-btn[data-pid="${pid}"]`);
+        if (btn) {
+          btn.classList.toggle('faved', favorites.has(pid));
+          btn.textContent = favorites.has(pid) ? '♥' : '♡';
+        }
+        // 즐겨찾기 필터 중이면 다시 렌더
+        if (favOnly) render();
+      }
+
+      // ── 렌더 ───────────────────────────────────────
+      function render() {
+        const grid  = document.getElementById('shop-grid');
+        const countEl = document.getElementById('result-count');
+        const stateEl = document.getElementById('state-box');
+
+        let items = favOnly
+          ? allItems.filter(it => favorites.has(itemKey(it)))
+          : [...allItems];
+
+        if (items.length === 0) {
+          grid.innerHTML = '';
+          stateEl.style.display = '';
+          stateEl.innerHTML = `<div class="emoji">${favOnly ? '🤍' : '😶'}</div>
+            <h2>${favOnly ? '즐겨찾기한 상품이 없습니다' : '검색 결과가 없습니다'}</h2>
+            <p>${favOnly ? '상품 카드의 ♡ 버튼을 눌러 즐겨찾기를 추가하세요.' : '"' + escHtml(keyword) + '"에 해당하는 상품을 찾지 못했습니다.'}</p>`;
+          countEl.style.display = 'none';
+          return;
+        }
+
+        stateEl.style.display = 'none';
+        countEl.style.display = '';
+        countEl.innerHTML = `<strong>${escHtml(keyword)}</strong> 검색 결과 <strong>${items.length}</strong>개`;
+
+        grid.innerHTML = items.map(it => buildCard(it)).join('');
+      }
+
+      function buildCard(it) {
+        const pid    = itemKey(it);
+        const faved  = favorites.has(pid);
+        const lprice = it.lprice ? it.lprice.toLocaleString() + '원' : '가격 정보 없음';
+        const hprice = it.hprice && it.hprice !== it.lprice ? `~ ${it.hprice.toLocaleString()}원` : '';
+        const cat    = [it.category1, it.category2, it.category3].filter(Boolean).join(' > ');
+        const brand  = it.brand || it.maker || '';
+        const img    = it.image || '';
+        const title  = escHtml(it.title);
+        const link   = it.link || '#';
+        const mall   = escHtml(it.mall_name || '');
+
+        return `
+        <li class="shop-card">
+          <a class="card-link" href="${escHtml(link)}" target="_blank" rel="noopener" aria-label="${title}"></a>
+          <button
+            class="fav-btn ${faved ? 'faved' : ''}"
+            data-pid="${escHtml(pid)}"
+            onclick="toggleFav(event,'${escHtml(pid)}')"
+            title="${faved ? '즐겨찾기 제거' : '즐겨찾기 추가'}"
+            aria-label="${faved ? '즐겨찾기 제거' : '즐겨찾기 추가'}"
+          >${faved ? '♥' : '♡'}</button>
+
+          <div class="card-thumb">
+            ${img ? `<img src="${escHtml(img)}" alt="${title}" loading="lazy" />` : ''}
+          </div>
+
+          <div class="card-body">
+            ${mall ? `<span class="card-mall">${mall}</span>` : ''}
+            <p class="card-title">${title}</p>
+            ${brand ? `<p class="card-brand">브랜드: ${escHtml(brand)}</p>` : ''}
+            ${cat   ? `<p class="card-cat">${escHtml(cat)}</p>` : ''}
+            <div class="card-price-wrap">
+              <span class="card-price-low">${lprice}</span>
+              ${hprice ? `<span class="card-price-high">${hprice}</span>` : ''}
+            </div>
+          </div>
+        </li>`;
+      }
+
+      // ── 로딩 스켈레톤 ────────────────────────────────
+      function setLoading(on) {
+        const grid    = document.getElementById('shop-grid');
+        const stateEl = document.getElementById('state-box');
+        const countEl = document.getElementById('result-count');
+
+        if (on) {
+          stateEl.style.display = 'none';
+          countEl.style.display = 'none';
+          grid.innerHTML = Array.from({length: 10}).map(() => `
+            <li class="skeleton">
+              <div class="skel-img"></div>
+              <div class="skel-body">
+                <div class="skel-line"></div>
+                <div class="skel-line w60"></div>
+                <div class="skel-line w40"></div>
+              </div>
+            </li>`).join('');
+        }
+      }
+
+      // ── 컨트롤 표시 ──────────────────────────────────
+      function showControls() {
+        document.getElementById('sort-bar').style.display = 'flex';
+      }
+
+      // ── 유틸 ────────────────────────────────────────
+      function itemKey(it) {
+        return it.product_id || (it.title + '_' + it.lprice);
+      }
+
+      function escHtml(s) {
+        if (!s) return '';
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function showToast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(el._timer);
+        el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+      }
+    </script>
+  </body>
+</html>
