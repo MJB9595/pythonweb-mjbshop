@@ -85,7 +85,7 @@ async def search(request: Request, q: str = "", sort: str = "date"):
 
     shop_models = [ShoppingModel(**i) for i in items]
     if shop_models:
-        await mongodb.engine.save_all(shop_models)
+        await mongodb.get_engine().save_all(shop_models)
 
     return templates.TemplateResponse(
         request=request,
@@ -124,6 +124,7 @@ async def api_shop(q: str = "", sort: str = "date"):
 
 @app.on_event("startup")
 async def on_app_start():
+    # 로컬 실행 시 미리 연결; Vercel 서버리스는 get_engine()이 대신 처리
     print("hello server")
     mongodb.connect()
 
