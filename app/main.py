@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.models import mongodb
 from app.models.shopping import ShoppingModel
+from app.models.favorite import FavoriteModel
 from app.shopping_scraper import NaverShoppingScraper
 
 app = FastAPI()
@@ -116,6 +117,60 @@ async def api_shop(q: str = "", sort: str = "date"):
     items_raw = await scraper.search(keyword, sort=sort)
     items = [_normalize_item(keyword, item) for item in items_raw]
     return JSONResponse({"items": items})
+
+
+# ──────────────────────────────────────────────
+# 즐겨찾기 API
+# ──────────────────────────────────────────────
+
+@app.get("/api/favorites")
+async def get_favorites():
+    """저장된 즐겨찾기 전체 반환."""
+    engine = mongodb.get_engine()
+    favs = await engine.find(FavoriteModel)
+    return JSONResponse({"items": [dict(f) for f in favs]})
+
+
+@app.post("/api/favorites")
+async def add_favorite(request: Request):
+    """즐겨찾기 추가 (중복이면 무시)."""
+    data = await request.json()
+    pid = str(data.get("product_id", "")).strip()
+    if not pid:
+        return JSONResponse({"ok": False, "error": "product_id 없음"}, status_code=400)
+
+    engine = mongodb.get_engine()
+    existing = await engine.find_one(FavoriteModel, FavoriteModel.product_id == pid)
+    if existing:
+        return JSONResponse({"ok": True, "created": False})
+
+    fav = FavoriteModel(
+        product_id=pid,
+        title=data.get("title", ""),
+        link=data.get("link", ""),
+        image=data.get("image", ""),
+        lprice=int(data.get("lprice", 0)),
+        hprice=int(data.get("hprice", 0)),
+        mall_name=data.get("mall_name", ""),
+        brand=data.get("brand", ""),
+        maker=data.get("maker", ""),
+        category1=data.get("category1", ""),
+        category2=data.get("category2", ""),
+        category3=data.get("category3", ""),
+        category4=data.get("category4", ""),
+    )
+    await engine.save(fav)
+    return JSONResponse({"ok": True, "created": True})
+
+
+@app.delete("/api/favorites/{product_id}")
+async def remove_favorite(product_id: str):
+    """즐겨찾기 삭제."""
+    engine = mongodb.get_engine()
+    fav = await engine.find_one(FavoriteModel, FavoriteModel.product_id == product_id)
+    if fav:
+        await engine.delete(fav)
+    return JSONResponse({"ok": True})
 
 
 # ──────────────────────────────────────────────

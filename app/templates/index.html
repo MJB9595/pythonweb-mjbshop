@@ -350,14 +350,18 @@
 
     <script>
       // ── 상태 ────────────────────────────────────────
-      let allItems    = [];
+      let allItems    = [];   // 현재 검색 결과
       let currentSort = '{{ sort if sort is defined else "date" }}';
       let keyword     = '';
       let favOnly     = false;
-      let favorites   = new Set(JSON.parse(localStorage.getItem('shop_favs') || '[]'));
+      let favorites   = new Set();  // product_id Set (DB에서 로드)
+      let favItems    = [];         // 즐겨찾기 모드 표시용 item 목록
 
-      // ── 초기 로드 (서버사이드 렌더) ─────────────────
-      window.addEventListener('DOMContentLoaded', () => {
+      // ── 초기 로드 ──────────────────────────────────
+      window.addEventListener('DOMContentLoaded', async () => {
+        // DB에서 즐겨찾기 ID 목록 미리 로드
+        await loadFavIds();
+
         const kw    = "{{ keyword or '' }}";
         const items = {{ items | tojson if items is defined else 'null' }};
         if (kw && items) {
@@ -367,6 +371,16 @@
           render();
         }
       });
+
+      // ── 즐겨찾기 ID 목록 로드 (렌더에서 ♥/♡ 표시용) ─
+      async function loadFavIds() {
+        try {
+          const res  = await fetch('/api/favorites');
+          const data = await res.json();
+          favorites  = new Set((data.items || []).map(it => it.product_id));
+          favItems   = data.items || [];
+        } catch { /* 실패해도 무시 */ }
+      }
 
       // ── 검색 ───────────────────────────────────────
       function doSearch(e) {
@@ -385,7 +399,7 @@
         fetchItems();
       }
 
-      // ── API 호출 ────────────────────────────────────
+      // ── 검색 API 호출 ───────────────────────────────
       async function fetchItems() {
         setLoading(true);
         try {
@@ -408,35 +422,59 @@
         fetchItems();
       }
 
-      // ── 즐겨찾기 필터 ────────────────────────────────
-      function toggleFavFilter() {
+      // ── 즐겨찾기 필터 (전체 즐겨찾기 표시) ──────────
+      async function toggleFavFilter() {
         favOnly = !favOnly;
         const btn = document.getElementById('fav-toggle');
         btn.classList.toggle('active', favOnly);
         btn.textContent = favOnly ? '즐겨찾기만 보기 ON' : '즐겨찾기만 보기';
+
+        if (favOnly) {
+          // DB에서 최신 즐겨찾기 가져오기
+          setLoading(true);
+          await loadFavIds();
+          setLoading(false);
+          document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        } else {
+          showControls(currentSort);
+        }
         render();
       }
 
-      // ── 즐겨찾기 토글 ────────────────────────────────
-      function toggleFav(event, pid) {
+      // ── 즐겨찾기 추가/제거 ───────────────────────────
+      async function toggleFav(event, pid) {
         event.preventDefault();
         event.stopPropagation();
+
+        const btn = document.querySelector(`.fav-btn[data-pid="${escAttr(pid)}"]`);
+
         if (favorites.has(pid)) {
+          // 제거
           favorites.delete(pid);
+          favItems = favItems.filter(it => it.product_id !== pid);
+          if (btn) { btn.classList.remove('faved'); btn.textContent = '♡'; btn.title = '즐겨찾기 추가'; }
+          fetch(`/api/favorites/${encodeURIComponent(pid)}`, { method: 'DELETE' });
           showToast('즐겨찾기에서 제거했습니다');
         } else {
+          // 추가 — 현재 카드의 item 데이터 전송
+          const item = allItems.find(it => itemKey(it) === pid)
+                    || favItems.find(it => it.product_id === pid);
+          if (!item) return;
+
           favorites.add(pid);
+          favItems.push(item);
+          if (btn) { btn.classList.add('faved'); btn.textContent = '♥'; btn.title = '즐겨찾기 제거'; }
+          fetch('/api/favorites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item),
+          });
           showToast('즐겨찾기에 추가했습니다 ♥');
         }
-        localStorage.setItem('shop_favs', JSON.stringify([...favorites]));
-        const btn = document.querySelector(`.fav-btn[data-pid="${escAttr(pid)}"]`);
-        if (btn) {
-          btn.classList.toggle('faved', favorites.has(pid));
-          btn.textContent = favorites.has(pid) ? '♥' : '♡';
-          btn.title = favorites.has(pid) ? '즐겨찾기 제거' : '즐겨찾기 추가';
-        }
+
         if (favOnly) render();
       }
+
 
       // ── 렌더 ───────────────────────────────────────
       function render() {
@@ -444,23 +482,24 @@
         const countEl = document.getElementById('result-count');
         const stateEl = document.getElementById('state-msg');
 
-        let items = favOnly
-          ? allItems.filter(it => favorites.has(itemKey(it)))
-          : [...allItems];
+        // 즐겨찾기 모드: favItems(전체 즐겨찾기), 일반 모드: allItems(검색 결과)
+        let items = favOnly ? favItems : [...allItems];
 
         if (items.length === 0) {
           grid.innerHTML = '';
           stateEl.style.display = '';
           stateEl.textContent = favOnly
             ? '즐겨찾기한 상품이 없습니다. 카드의 ♡ 버튼으로 추가하세요.'
-            : `"${keyword}"에 대한 검색 결과가 없습니다.`;
+            : (keyword ? `"${keyword}"에 대한 검색 결과가 없습니다.` : '검색어를 입력해 상품을 찾아보세요.');
           countEl.style.display = 'none';
           return;
         }
 
         stateEl.style.display = 'none';
         countEl.style.display = '';
-        countEl.innerHTML = `<strong>${escHtml(keyword)}</strong> 검색 결과 ${items.length}건`;
+        countEl.innerHTML = favOnly
+          ? `즐겨찾기 <strong>${items.length}</strong>건`
+          : `<strong>${escHtml(keyword)}</strong> 검색 결과 ${items.length}건`;
 
         grid.innerHTML = items.map(it => buildCard(it)).join('');
       }
