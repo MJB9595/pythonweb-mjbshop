@@ -1,0 +1,17 @@
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv*/
+.venv/
+
+# 빌드 / 배포
+*.egg-info/
+dist/
+build/
+.vercel/
+
+# 로그
+*.log
